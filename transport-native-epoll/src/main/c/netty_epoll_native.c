@@ -119,6 +119,17 @@ static void netty_epoll_native_eventFdWrite(JNIEnv* env, jclass clazz, jint fd, 
     jint eventFD = eventfd_write(fd, (eventfd_t) value);
 
     if (eventFD < 0) {
+        // We need to read before we can write again, let's try to read and then write again and if this
+        // fails we will bail out.
+        //
+        // See http://man7.org/linux/man-pages/man2/eventfd.2.html.
+        if (errno == EAGAIN) {
+            uint64_t eventfd_t;
+            eventfd_read(fd, &eventfd_t);
+            if (eventfd_write(fd, (eventfd_t) value) != 0) {
+                return;
+            }
+        }
         netty_unix_errors_throwChannelExceptionErrorNo(env, "eventfd_write() failed: ", errno);
     }
 }
